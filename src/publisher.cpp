@@ -1,51 +1,87 @@
-#include "radar_obs/config.hpp"
+#include "radar_obs/publisher.hpp"
 #include "radar_obs/obs_simulator.hpp"
 
-auto timer_d = 2000ms;
+void listSettings(const libconfig::Setting& setting, const std::string& path = "")
+{
+  int count = setting.getLength();
+
+  for (int i = 0; i < count; ++i) {
+    const libconfig::Setting& child = setting[i];
+    std::string childPath = path + "." + child.getName();
+
+    std::cout << "Setting: " << childPath << std::endl;
+
+    if (child.isGroup()) {
+      listSettings(child, childPath);
+    }
+  }
+}
+
 
 class ObsPublisher : public rclcpp::Node {
 public:
   ObsPublisher() : Node("radar") {
     starting_time_ = rclcpp::Clock().now();
+    RCLCPP_INFO(this->get_logger(), "Loading configuration..");
 
-    if (false) {
-      // Random Gen
-      for (int obs_id = 0; obs_id < n_obs; obs_id++) {
-        obstacles.push_back(obs_simulator(obs_id));
-      }
-    } else {
-      RCLCPP_INFO(this->get_logger(), "Reading data..");
-      // From file
-      std::ifstream obs_text;
-      obs_text.open("src/radar_obs/files/obstacles.txt");
-      //if (myfile.is_open()) {
-      std::string obs_line;
-      std::getline(obs_text, obs_line); // remove first line
-      while (std::getline(obs_text, obs_line)) {
-        if (obs_line == "---") break;
-        std::string id;
-        double time, latitude, longitude, heading, speed, dim_x, dim_y;
-        std::stringstream ss(obs_line);
-        ss >> time;
-        ss >> id;
-        ss >> latitude;
-        ss >> longitude;
-        ss >> heading;
-        ss >> speed;
-        ss >> dim_x;
-        ss >> dim_y;
-        obstacles.push_back(
-                obs_simulator(id, time, latitude, longitude, heading, speed, dim_x, dim_y));
-      }
-      obs_text.close();
+    std::string radar_dir = ament_index_cpp::get_package_share_directory("radar_obs");
+    std::string radar_dir_conf_ = radar_dir;
+    radar_dir_conf_.append("/conf/configuration.cfg");
+    cfg_.readFile(radar_dir_conf_.c_str());
+
+    const libconfig::Setting &root = cfg_.getRoot();
+
+    centroid.latitude = cfg_.lookup("centroid.latitude");
+    centroid.longitude = cfg_.lookup("centroid.longitude");
+    obs_pub_rate = cfg_.lookup("obs_pub_rate");
+
+    RCLCPP_INFO(this->get_logger(), "..Done");
+
+    const libconfig::Setting &obss = root["obstacles"];
+    int count = obss.getLength();
+    for (int i = 0; i < count; ++i) {
+      const libconfig::Setting &obs = obss[i];
+
+      std::string id;
+      double spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, gap;
+      ulisse_msgs::msg::BoundingBox bb_max, bb_safe;
+
+      if (!obs.lookup("active")) continue;
+
+      obs.lookupValue("id", id);
+      obs.lookupValue("spawn_time", spawn_time);
+      obs.lookupValue("kill_time", kill_time);
+      lat = obs.lookup("position.N");
+      lon = obs.lookup("position.E");
+      obs.lookupValue("heading", heading);
+      obs.lookupValue("speed", speed);
+
+      dim_x = obs.lookup("dim.x");
+      dim_y = obs.lookup("dim.y");
+
+      bb_max.x_bow_ratio = obs.lookup("bbs.bb_max.x_bow_ratio");
+      bb_max.x_stern_ratio = obs.lookup("bbs.bb_max.x_stern_ratio");
+      bb_max.y_starboard_ratio = obs.lookup("bbs.bb_max.y_starboard_ratio");
+      bb_max.y_port_ratio = obs.lookup("bbs.bb_max.y_port_ratio");
+      bb_safe.x_bow_ratio = obs.lookup("bbs.bb_safe.x_bow_ratio");
+      bb_safe.x_stern_ratio = obs.lookup("bbs.bb_safe.x_stern_ratio");
+      bb_safe.y_starboard_ratio = obs.lookup("bbs.bb_safe.y_starboard_ratio");
+      bb_safe.y_port_ratio = obs.lookup("bbs.bb_safe.y_port_ratio");
+
+      obs.lookupValue("gap", gap);
+
+      obstacles.emplace_back(id, spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, bb_max, bb_safe, gap);
+      //obstacles.at(obstacles.size()-1).print();
     }
 
     publisher_ = this->create_publisher<ulisse_msgs::msg::Obstacle>("/ulisse/ctrl/obstacle", 10);
-    timer_ = this->create_wall_timer(timer_d, std::bind(&ObsPublisher::timer_callback, this));
+    auto duration = std::chrono::duration<double>(obs_pub_rate);
+    timer_ = this->create_wall_timer(duration, std::bind(&ObsPublisher::timer_callback, this));
     RCLCPP_INFO(this->get_logger(), "Starting..");
   }
 
 private:
+
   rclcpp::Time starting_time_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<ulisse_msgs::msg::Obstacle>::SharedPtr publisher_;
@@ -56,8 +92,9 @@ private:
     RCLCPP_INFO(this->get_logger(), ".");
     auto current_time = rclcpp::Clock().now().seconds() - starting_time_.seconds();
     // Iterate through obstacles and check if they should be moved to tracking_obs
+
     for (auto it = obstacles.begin(); it != obstacles.end(); /* nothing on purpose */) {
-      if (it->time <= current_time) {
+      if (it->spawn_time <= current_time) {
         // Find the obstacle in tracking_obs and erase it if it exists
         auto tracking_it = std::find_if(tracking_obs.begin(), tracking_obs.end(),
                                         [&it](const auto &entry) { return entry.id == it->id; });
@@ -66,9 +103,14 @@ private:
           tracking_obs.erase(tracking_it);
           it->position = pos;
         }
-        // Add the obstacle to tracking_obs and remove it from obstacles
-        tracking_obs.push_back(*it);
-        it = obstacles.erase(it);
+        // Check if kill_time is less than current_time and erase from obstacles
+        if (it->kill_time <= current_time) {
+          it = obstacles.erase(it);
+        } else {
+          // Add the obstacle to tracking_obs and remove it from obstacles
+          tracking_obs.push_back(*it);
+          ++it;
+        }
       } else {
         ++it;
       }

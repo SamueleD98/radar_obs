@@ -16,7 +16,7 @@ find_package(ulisse_msgs REQUIRED)
 ## Executables
 add_executable(radar src/publisher.cpp)
 ament_target_dependencies(radar rclcpp std_msgs ulisse_msgs ctrl_toolbox)
-target_link_libraries(radar ctrl_toolbox)
+target_link_libraries(radar ctrl_toolbox config++)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -30,6 +30,11 @@ target_compile_features(radar PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++
 
 install(TARGETS radar
   DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY
+        conf
+        DESTINATION share/${PROJECT_NAME}
+        )
 
 
 ament_package()
