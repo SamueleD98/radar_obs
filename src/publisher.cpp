@@ -1,23 +1,6 @@
 #include "radar_obs/publisher.hpp"
 #include "radar_obs/obs_simulator.hpp"
 
-void listSettings(const libconfig::Setting& setting, const std::string& path = "")
-{
-  int count = setting.getLength();
-
-  for (int i = 0; i < count; ++i) {
-    const libconfig::Setting& child = setting[i];
-    std::string childPath = path + "." + child.getName();
-
-    std::cout << "Setting: " << childPath << std::endl;
-
-    if (child.isGroup()) {
-      listSettings(child, childPath);
-    }
-  }
-}
-
-
 class ObsPublisher : public rclcpp::Node {
 public:
   ObsPublisher() : Node("radar") {
@@ -25,15 +8,22 @@ public:
     RCLCPP_INFO(this->get_logger(), "Loading configuration..");
 
     std::string radar_dir = ament_index_cpp::get_package_share_directory("radar_obs");
-    std::string radar_dir_conf_ = radar_dir;
-    radar_dir_conf_.append("/conf/configuration.cfg");
-    cfg_.readFile(radar_dir_conf_.c_str());
-
-    const libconfig::Setting &root = cfg_.getRoot();
+    std::string radar_dir_conf = radar_dir;
+    radar_dir_conf.append("/conf/configuration.cfg");
+    cfg_.readFile(radar_dir_conf.c_str());
 
     centroid.latitude = cfg_.lookup("centroid.latitude");
     centroid.longitude = cfg_.lookup("centroid.longitude");
     obs_pub_rate = cfg_.lookup("obs_pub_rate");
+    std::string scenario = cfg_.lookup("scenario");
+
+    std::string radar_dir_scenario = radar_dir;
+    radar_dir_scenario.append("/files/scenario_");
+    radar_dir_scenario.append(scenario);
+    radar_dir_scenario.append(".cfg");
+    libconfig::Config scenario_cfg;
+    scenario_cfg.readFile(radar_dir_scenario.c_str());
+    const libconfig::Setting &root = scenario_cfg.getRoot();
 
     RCLCPP_INFO(this->get_logger(), "..Done");
 
@@ -99,9 +89,9 @@ private:
         auto tracking_it = std::find_if(tracking_obs.begin(), tracking_obs.end(),
                                         [&it](const auto &entry) { return entry.id == it->id; });
         if (tracking_it != tracking_obs.end()) {
-          ctb::LatLong pos = tracking_it->GetPosition(current_time);
+          //ctb::LatLong pos = tracking_it->GetPosition(current_time);
           tracking_obs.erase(tracking_it);
-          it->position = pos;
+          //it->position = pos;
         }
         // Check if kill_time is less than current_time and erase from obstacles
         if (it->kill_time <= current_time) {

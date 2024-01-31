@@ -33,6 +33,7 @@ install(TARGETS radar
 
 install(DIRECTORY
         conf
+        files
         DESTINATION share/${PROJECT_NAME}
         )
 

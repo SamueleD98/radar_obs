@@ -2,7 +2,6 @@
 #define RADAR_OBS_OBSSIMULATOR_HPP
 
 #include "radar_obs/publisher.hpp"
-#include "radar_obs/utils.hpp"
 #include <eigen3/Eigen/Eigen>
 #include <utility>
 
@@ -15,7 +14,6 @@ public:
     double speed;
     double spawn_time = 0;
     double kill_time = 99999;
-
 
     ulisse_msgs::msg::BoundingBox bb_max;
     ulisse_msgs::msg::BoundingBox bb_safe;
@@ -88,9 +86,6 @@ public:
     }
 
 };
-
-
-
 
 
 #endif //RADAR_OBS_OBSSIMULATOR_HPP
