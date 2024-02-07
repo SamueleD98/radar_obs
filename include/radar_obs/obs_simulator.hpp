@@ -19,10 +19,14 @@ public:
     ulisse_msgs::msg::BoundingBox bb_safe;
     double gap;
 
+    double err_loc, err_velocity;
+
     // from file
     obs_simulator(std::string id, double spawn_time, double kill_time, double latitude, double longitude, double heading, double speed,
-                  double dim_x, double dim_y, ulisse_msgs::msg::BoundingBox bb_max, ulisse_msgs::msg::BoundingBox bb_safe, double gap):
-            id(std::move(id)), heading(heading), bb_x(dim_x), bb_y(dim_y), speed(speed), spawn_time(spawn_time), kill_time(kill_time), bb_max(bb_max), bb_safe(bb_safe), gap(gap)
+                  double dim_x, double dim_y, ulisse_msgs::msg::BoundingBox bb_max, ulisse_msgs::msg::BoundingBox bb_safe, double gap,
+                  double err_loc, double err_velocity):
+            id(std::move(id)), heading(heading), bb_x(dim_x), bb_y(dim_y), speed(speed), spawn_time(spawn_time), kill_time(kill_time),
+            bb_max(bb_max), bb_safe(bb_safe), gap(gap), err_loc(err_loc), err_velocity(err_velocity)
     {
       position = GetLatLong(Eigen::Vector2d(latitude, longitude));
     }
@@ -57,9 +61,13 @@ public:
     }*/
 
     ctb::LatLong GetPosition(double time) const{
+      std::random_device r;
+      std::default_random_engine e1(r());
+      std::uniform_real_distribution<double> pos_error(-err_loc, err_loc);
+
       Eigen::Vector2d pos = GetLocal(position);
-      pos.x() += speed * time * cos(heading);
-      pos.y() += speed * time * sin(heading);
+      pos.x() += speed * time * cos(heading) + pos_error(e1);
+      pos.y() += speed * time * sin(heading) + pos_error(e1);;
       return GetLatLong(pos);
     }
 

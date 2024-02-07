@@ -22,6 +22,7 @@ public:
     radar_dir_scenario.append(scenario);
     radar_dir_scenario.append(".cfg");
     libconfig::Config scenario_cfg;
+    std::cout<<"trying to load conf at: "<<radar_dir_scenario<<std::endl;
     scenario_cfg.readFile(radar_dir_scenario.c_str());
     const libconfig::Setting &root = scenario_cfg.getRoot();
 
@@ -33,7 +34,7 @@ public:
       const libconfig::Setting &obs = obss[i];
 
       std::string id;
-      double spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, gap;
+      double spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, gap, err_loc, err_velocity;
       ulisse_msgs::msg::BoundingBox bb_max, bb_safe;
 
       if (!obs.lookup("active")) continue;
@@ -41,8 +42,8 @@ public:
       obs.lookupValue("id", id);
       obs.lookupValue("spawn_time", spawn_time);
       obs.lookupValue("kill_time", kill_time);
-      lat = obs.lookup("position.N");
-      lon = obs.lookup("position.E");
+      /*lat = obs.lookup("position.N");
+      lon = obs.lookup("position.E");*/
       obs.lookupValue("heading", heading);
       obs.lookupValue("speed", speed);
 
@@ -60,7 +61,20 @@ public:
 
       obs.lookupValue("gap", gap);
 
-      obstacles.emplace_back(id, spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, bb_max, bb_safe, gap);
+      err_loc = obs.lookup("errors.localization");
+      err_velocity = obs.lookup("errors.velocity");
+
+      try {
+        lat = obs.lookup("position.N");
+        lon = obs.lookup("position.E");
+      }
+      catch (...) {
+        Eigen::Vector2d pos_NED = GetLocal(ctb::LatLong(obs.lookup("position.lat"), obs.lookup("position.long")));
+        lat = pos_NED.x();
+        lon = pos_NED.y();
+      }
+
+      obstacles.emplace_back(id, spawn_time, kill_time, lat, lon, heading, speed, dim_x, dim_y, bb_max, bb_safe, gap, err_loc, err_velocity);
       //obstacles.at(obstacles.size()-1).print();
     }
 
